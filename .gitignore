@@ -1,0 +1,12 @@
+venv/
+
+__pycache__/
+
+*.pyc
+
+data/*.csv
+
+models/*.pkl
+
+.ipynb_checkpoints/
+.idea/

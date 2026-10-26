@@ -1,0 +1,20 @@
+# For preprocessing and training
+pandas
+numpy
+scikit-learn
+lightgbm
+joblib
+jupyter
+
+# To be added later
+
+# shap           # explainability / SHAP values
+# optuna         # hyperparameter tuning
+# mlflow         # experiment tracking + model registry
+# dvc            # dataset versioning
+# pandera        # data validation
+# prefect        # pipeline orchestration
+# fastapi        # model serving API
+# uvicorn        # server to run the FastAPI app
+# streamlit      # dashboard
+# evidently      # drift detection / monitoring
