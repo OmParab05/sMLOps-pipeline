@@ -7,6 +7,7 @@ splits ready for a LightGBM or XGBoost model.
 """
 
 import os
+import re
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
@@ -86,10 +87,20 @@ def prepare_features(df: pd.DataFrame, encode_for: str = "lightgbm"):
             x[col] = x[col].astype("category")
     elif encode_for == "xgboost":
         x = pd.get_dummies(x, columns=cat_cols, drop_first=True)
+        x = sanitize_feature_names(x)
     else:
         raise ValueError("encode_for must be 'lightgbm' or 'xgboost'")
 
     return x, y
+
+def sanitize_feature_names(x: pd.DataFrame) -> pd.DataFrame:
+    """LightGBM rejects feature names containing JSON special characters
+    (commas, colons, brackets, quotes). One-hot encoding can generate
+    exactly these from category values like "Spouse, partner" -- replace
+    anything that isn't a letter, digit, or underscore with an underscore."""
+    x = x.copy()
+    x.columns = [re.sub(r"[^A-Za-z0-9_]+", "_", col) for col in x.columns]
+    return x
 
 
 def split_and_save(x: pd.DataFrame, y: pd.Series, out_dir: str = OUT_DIR):
@@ -107,6 +118,15 @@ def split_and_save(x: pd.DataFrame, y: pd.Series, out_dir: str = OUT_DIR):
     print(f"x_train: {x_train.shape}, x_test: {x_test.shape}")
     return x_train, x_test, y_train, y_test
 
+def process_file(path: str, encode_for: str = "lightgbm"):
+    """Clean, fix, and feature-engineer a given CSV, returning x, y with
+    no train/test split. Used for the initial pool and each new batch
+    in the retraining simulation."""
+    df = load_data(path)
+    df = fix_known_issues(df)
+    df = engineer_features(df)
+    x, y = prepare_features(df, encode_for=encode_for)
+    return x, y
 
 def run_pipeline(encode_for: str = "lightgbm"):
     df = load_data()

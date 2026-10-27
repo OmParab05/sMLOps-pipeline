@@ -26,11 +26,11 @@ DATA_DIR = "data/processed"
 MODEL_DIR = "models"
 
 
-def load_processed():
-    x_train = pd.read_csv(f"{DATA_DIR}/x_train.csv")
-    x_test = pd.read_csv(f"{DATA_DIR}/x_test.csv")
-    y_train = pd.read_csv(f"{DATA_DIR}/y_train.csv").squeeze("columns")
-    y_test = pd.read_csv(f"{DATA_DIR}/y_test.csv").squeeze("columns")
+def load_processed(data_dir: str = DATA_DIR):
+    x_train = pd.read_csv(f"{data_dir}/x_train.csv")
+    x_test = pd.read_csv(f"{data_dir}/x_test.csv")
+    y_train = pd.read_csv(f"{data_dir}/y_train.csv").squeeze("columns")
+    y_test = pd.read_csv(f"{data_dir}/y_test.csv").squeeze("columns")
 
     # CSV round-tripping loses the 'category' dtype LightGBM needs for
     # native categorical handling -- restore it for every object column.
@@ -108,12 +108,27 @@ def train_final_model(x_train, y_train, x_test, y_test):
 
     return model
 
+def train_on_pool(x: pd.DataFrame, y: pd.Series):
+    model = build_model()
+    model.fit(x, y)
+    return model
+
 
 def save_model(model, path: str = f"{MODEL_DIR}/lgbm_model.pkl"):
     os.makedirs(MODEL_DIR, exist_ok=True)
     joblib.dump(model, path)
     print(f"Model saved to {path}")
 
+def promote_or_reject(champion_probs, challenger_probs, y_eval, threshold: float = 0.02):
+    champion_auc = roc_auc_score(y_eval, champion_probs)
+    challenger_auc = roc_auc_score(y_eval, challenger_probs)
+    print(f"Champion AUC: {champion_auc:.4f} | Challenger AUC: {challenger_auc:.4f}")
+
+    if challenger_auc > champion_auc + threshold:
+        print(f"Challenger beats champion by > {threshold}: PROMOTED")
+        return True
+    print("Challenger did not beat champion by threshold: REJECTED")
+    return False
 
 if __name__ == "__main__":
     x_train, x_test, y_train, y_test = load_processed()
