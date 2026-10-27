@@ -9,4 +9,5 @@ data/*.csv
 models/*.pkl
 
 .ipynb_checkpoints/
+
 .idea/
