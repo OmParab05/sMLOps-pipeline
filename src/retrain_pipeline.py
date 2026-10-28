@@ -28,6 +28,7 @@ from sklearn.metrics import roc_auc_score
 
 from preprocessing import process_file
 from train import train_on_pool, promote_or_reject, save_model
+from detect_drift import check_drift
 
 SIM_DIR = "data/simulated"
 MODEL_PATH = "models/champion_model.pkl"
@@ -80,6 +81,16 @@ def run():
     for i in range(1, N_BATCHES + 1):
         print(f"\n=== Round {i}: batch_{i} arrives ===")
         accumulated_paths.append(f"{SIM_DIR}/batch_{i}.csv")
+
+        reference_df = pd.read_csv(f"{SIM_DIR}/initial_train.csv")
+        batch_df = pd.read_csv(f"{SIM_DIR}/batch_{i}.csv")
+        drift_result = check_drift(reference_df, batch_df)
+
+        if not drift_result["drift_detected"]:
+            print(f"No significant drift in batch_{i} — skipping retraining this round.")
+            continue
+
+        print(f"Drift detected in batch_{i} — proceeding with retraining.")
 
         combined_path = f"{SIM_DIR}/_combined_round_{i}.csv"
         combine_raw_files(accumulated_paths, combined_path)
