@@ -35,3 +35,6 @@ mlruns/
 
 # Contains SHAP explainability reports
 reports/
+
+# MLflow tracking data
+mlflow.db
