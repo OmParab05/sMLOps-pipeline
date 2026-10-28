@@ -29,3 +29,9 @@ mlruns/
 
 # OS junk files
 .DS_Store
+
+# Environment variables file
+.env
+
+# Contains SHAP explainability reports
+reports/

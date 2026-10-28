@@ -18,6 +18,7 @@ import os
 import joblib
 import numpy as np
 import pandas as pd
+import mlflow
 from lightgbm import LGBMClassifier
 from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import roc_auc_score, f1_score, classification_report
@@ -108,9 +109,20 @@ def train_final_model(x_train, y_train, x_test, y_test):
 
     return model
 
-def train_on_pool(x: pd.DataFrame, y: pd.Series):
+def train_on_pool(x: pd.DataFrame, y: pd.Series, run_name: str = "training_run"):
     model = build_model()
-    model.fit(x, y)
+    params = model.get_params()
+
+    with mlflow.start_run(run_name=run_name):
+        mlflow.log_params({
+            "n_estimators": params["n_estimators"],
+            "learning_rate": params["learning_rate"],
+            "num_leaves": params["num_leaves"],
+            "min_child_samples": params["min_child_samples"],
+        })
+        model.fit(x, y)
+        mlflow.log_metric("train_rows", len(x))
+
     return model
 
 

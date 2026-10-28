@@ -11,6 +11,7 @@ import re
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
+from validate import validate_batch
 
 RAW_PATH = "data/application_train.csv"
 OUT_DIR = "data/processed"
@@ -19,7 +20,17 @@ OUT_DIR = "data/processed"
 def load_data(path: str = RAW_PATH) -> pd.DataFrame:
     df = pd.read_csv(path)
     print(f"Loaded {df.shape[0]} rows, {df.shape[1]} columns")
-    print("Target balance:\n", df["TARGET"].value_counts(normalize=True))
+
+    is_valid, errors = validate_batch(df)
+    if not is_valid:
+        print("Data validation FAILED:")
+        for e in errors:
+            print(f"  - {e}")
+        raise ValueError(f"Validation failed for {path}; see errors above.")
+    print("Data validation passed.")
+
+    if "TARGET" in df.columns:
+        print("Target balance:\n", df["TARGET"].value_counts(normalize=True))
     return df
 
 

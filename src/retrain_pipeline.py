@@ -24,6 +24,7 @@ Produces:
 """
 
 import pandas as pd
+import mlflow
 from sklearn.metrics import roc_auc_score
 
 from preprocessing import process_file
@@ -62,9 +63,11 @@ def align_columns(x: pd.DataFrame, reference_columns) -> pd.DataFrame:
 
 
 def run():
+    mlflow.set_experiment("smlops_credit_risk")
+
     print("=== Round 0: training initial champion ===")
     x_init, y_init = process_file(f"{SIM_DIR}/initial_train.csv", encode_for=ENCODING)
-    champion = train_on_pool(x_init, y_init)
+    champion = train_on_pool(x_init, y_init, run_name="round_0_champion")
     champion_columns = x_init.columns
 
     x_eval_raw, y_eval = process_file(f"{SIM_DIR}/eval_fixed.csv", encode_for=ENCODING)
@@ -74,6 +77,9 @@ def run():
     champion_auc = roc_auc_score(y_eval, champion_probs)
     print(f"Initial champion AUC on fixed evaluation set: {champion_auc:.4f}")
 
+    with mlflow.start_run(run_name="round_0_summary"):
+        mlflow.log_metric("champion_auc", champion_auc)
+
     save_model(champion, MODEL_PATH)
 
     accumulated_paths = [f"{SIM_DIR}/initial_train.csv"]
@@ -82,26 +88,13 @@ def run():
         print(f"\n=== Round {i}: batch_{i} arrives ===")
         accumulated_paths.append(f"{SIM_DIR}/batch_{i}.csv")
 
-        reference_df = pd.read_csv(f"{SIM_DIR}/initial_train.csv")
-        batch_df = pd.read_csv(f"{SIM_DIR}/batch_{i}.csv")
-        drift_result = check_drift(reference_df, batch_df)
-
-        if not drift_result["drift_detected"]:
-            print(f"No significant drift in batch_{i} — skipping retraining this round.")
-            continue
-
-        print(f"Drift detected in batch_{i} — proceeding with retraining.")
-
         combined_path = f"{SIM_DIR}/_combined_round_{i}.csv"
         combine_raw_files(accumulated_paths, combined_path)
 
         x_round, y_round = process_file(combined_path, encode_for=ENCODING)
-        challenger = train_on_pool(x_round, y_round)
+        challenger = train_on_pool(x_round, y_round, run_name=f"round_{i}_challenger")
         challenger_columns = x_round.columns
 
-        # Re-align the fixed eval set separately for each model, since
-        # champion and challenger were trained on pools with potentially
-        # different one-hot columns.
         x_eval_for_champion = align_columns(x_eval_raw, champion_columns)
         x_eval_for_challenger = align_columns(x_eval_raw, challenger_columns)
 
@@ -111,6 +104,11 @@ def run():
         promoted = promote_or_reject(
             champion_probs, challenger_probs, y_eval, threshold=PROMOTION_THRESHOLD
         )
+
+        with mlflow.start_run(run_name=f"round_{i}_summary"):
+            mlflow.log_metric("champion_auc", roc_auc_score(y_eval, champion_probs))
+            mlflow.log_metric("challenger_auc", roc_auc_score(y_eval, challenger_probs))
+            mlflow.log_metric("promoted", int(promoted))
 
         if promoted:
             champion = challenger

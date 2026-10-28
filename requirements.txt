@@ -5,14 +5,16 @@ scikit-learn
 lightgbm
 joblib
 jupyter
+pandera
+mlflow
+shap
+optuna
+dvc
+evidently
+streamlit
+matplotlib
 
-# To be added later
 
-# shap           # explainability / SHAP values
-# optuna         # hyperparameter tuning
-# mlflow         # experiment tracking + model registry
-# dvc            # dataset versioning
-# pandera        # data validation
 # prefect        # pipeline orchestration
 # fastapi        # model serving API
 # uvicorn        # server to run the FastAPI app
