@@ -1,0 +1,5 @@
+[core]
+    remote = b2remote
+['remote "b2remote"']
+    url = s3://smlops-om-parab
+    endpointurl = https://s3.eu-central-003.backblazeb2.com
