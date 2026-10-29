@@ -19,10 +19,17 @@ import joblib
 import numpy as np
 import pandas as pd
 import mlflow
+import mlflow.lightgbm
+import json
+from mlflow.tracking import MlflowClient
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
 from lightgbm import LGBMClassifier
 from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import roc_auc_score, f1_score, classification_report
 
+
+BEST_PARAMS_PATH = "models/best_params.json"
 DATA_DIR = "data/processed"
 MODEL_DIR = "models"
 
@@ -76,16 +83,29 @@ def build_model() -> LGBMClassifier:
     tells LightGBM to automatically weight the minority (default) class
     more heavily in the loss function, which is usually a stronger and
     simpler first move than generating synthetic rows.
+
+    If models/best_params.json exists (produced by optimize.py), those
+    Optuna-tuned hyperparameters are used instead of the hand-picked
+    defaults below.
     """
-    return LGBMClassifier(
+    default_params = dict(
         n_estimators=500,
         learning_rate=0.03,
         num_leaves=31,
-        max_depth=-1,
         min_child_samples=50,
         subsample=0.8,
         colsample_bytree=0.8,
-        is_unbalance=True,          # class weighting, instead of SMOTE
+    )
+
+    if os.path.exists(BEST_PARAMS_PATH):
+        with open(BEST_PARAMS_PATH) as f:
+            tuned_params = json.load(f)
+        default_params.update(tuned_params)
+        print(f"Using Optuna-tuned hyperparameters from {BEST_PARAMS_PATH}")
+
+    return LGBMClassifier(
+        **default_params,
+        is_unbalance=True,
         random_state=42,
         n_jobs=-1,
     )
@@ -113,7 +133,7 @@ def train_on_pool(x: pd.DataFrame, y: pd.Series, run_name: str = "training_run")
     model = build_model()
     params = model.get_params()
 
-    with mlflow.start_run(run_name=run_name):
+    with mlflow.start_run(run_name=run_name) as run:
         mlflow.log_params({
             "n_estimators": params["n_estimators"],
             "learning_rate": params["learning_rate"],
@@ -122,9 +142,35 @@ def train_on_pool(x: pd.DataFrame, y: pd.Series, run_name: str = "training_run")
         })
         model.fit(x, y)
         mlflow.log_metric("train_rows", len(x))
+        mlflow.lightgbm.log_model(model, name="model")
+        run_id = run.info.run_id
 
-    return model
+    return model, run_id
 
+REGISTERED_MODEL_NAME = "smlops_credit_risk_champion"
+
+
+def register_as_production(run_id: str, model_name: str = REGISTERED_MODEL_NAME):
+    """Registers the model logged under run_id as a new version of
+    model_name, promotes it to the 'Production' stage, and archives any
+    previously-production version -- so the registry always reflects
+    exactly one current production model."""
+    client = MlflowClient()
+    model_uri = f"runs:/{run_id}/model"
+
+    result = mlflow.register_model(model_uri, model_name)
+    version = result.version
+
+    for mv in client.get_latest_versions(model_name, stages=["Production"]):
+        client.transition_model_version_stage(
+            name=model_name, version=mv.version, stage="Archived"
+        )
+
+    client.transition_model_version_stage(
+        name=model_name, version=version, stage="Production"
+    )
+    print(f"Registered {model_name} version {version} and promoted to Production")
+    return version
 
 def save_model(model, path: str = f"{MODEL_DIR}/lgbm_model.pkl"):
     os.makedirs(MODEL_DIR, exist_ok=True)

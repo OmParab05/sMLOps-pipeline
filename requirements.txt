@@ -1,4 +1,3 @@
-# For preprocessing and training
 pandas
 numpy
 scikit-learn
@@ -14,9 +13,7 @@ evidently
 streamlit
 matplotlib
 
-
 # prefect        # pipeline orchestration
 # fastapi        # model serving API
 # uvicorn        # server to run the FastAPI app
 # streamlit      # dashboard
-# evidently      # drift detection / monitoring

@@ -26,14 +26,14 @@ Produces:
 import pandas as pd
 import mlflow
 from sklearn.metrics import roc_auc_score
-
+from train import train_on_pool, promote_or_reject, save_model, register_as_production
 from preprocessing import process_file
 from train import train_on_pool, promote_or_reject, save_model
 from detect_drift import check_drift
 
 SIM_DIR = "data/simulated"
 MODEL_PATH = "models/champion_model.pkl"
-PROMOTION_THRESHOLD = 0.02
+PROMOTION_THRESHOLD = 0.005
 N_BATCHES = 3
 
 # One-hot encoding ("xgboost" mode in process_file) is used here instead
@@ -67,7 +67,7 @@ def run():
 
     print("=== Round 0: training initial champion ===")
     x_init, y_init = process_file(f"{SIM_DIR}/initial_train.csv", encode_for=ENCODING)
-    champion = train_on_pool(x_init, y_init, run_name="round_0_champion")
+    champion, champion_run_id = train_on_pool(x_init, y_init, run_name="round_0_champion")
     champion_columns = x_init.columns
 
     x_eval_raw, y_eval = process_file(f"{SIM_DIR}/eval_fixed.csv", encode_for=ENCODING)
@@ -81,18 +81,40 @@ def run():
         mlflow.log_metric("champion_auc", champion_auc)
 
     save_model(champion, MODEL_PATH)
+    register_as_production(champion_run_id)
+
+    # Reference distribution every batch is checked against -- the
+    # initial pool, kept fixed throughout, same as detect_drift.py's
+    # own standalone usage.
+    reference_df = pd.read_csv(f"{SIM_DIR}/initial_train.csv")
 
     accumulated_paths = [f"{SIM_DIR}/initial_train.csv"]
 
     for i in range(1, N_BATCHES + 1):
         print(f"\n=== Round {i}: batch_{i} arrives ===")
-        accumulated_paths.append(f"{SIM_DIR}/batch_{i}.csv")
+        batch_path = f"{SIM_DIR}/batch_{i}.csv"
+
+        # The batch is still considered "arrived" and gets folded into
+        # future training pools regardless of this round's decision --
+        # only THIS round's retraining is skipped if nothing has drifted.
+        accumulated_paths.append(batch_path)
+
+        batch_df = pd.read_csv(batch_path)
+        drift_result = check_drift(reference_df, batch_df)
+
+        if not drift_result["drift_detected"]:
+            print(f"No significant drift in batch_{i} -- skipping retraining this round.")
+            continue
+
+        print(f"Drift detected in batch_{i} -- proceeding with retraining.")
 
         combined_path = f"{SIM_DIR}/_combined_round_{i}.csv"
         combine_raw_files(accumulated_paths, combined_path)
 
         x_round, y_round = process_file(combined_path, encode_for=ENCODING)
-        challenger = train_on_pool(x_round, y_round, run_name=f"round_{i}_challenger")
+        challenger, challenger_run_id = train_on_pool(
+            x_round, y_round, run_name=f"round_{i}_challenger"
+        )
         challenger_columns = x_round.columns
 
         x_eval_for_champion = align_columns(x_eval_raw, champion_columns)
@@ -114,9 +136,9 @@ def run():
             champion = challenger
             champion_columns = challenger_columns
             save_model(champion, MODEL_PATH)
+            register_as_production(challenger_run_id)
 
     print("\n=== Retraining simulation complete ===")
-
 
 if __name__ == "__main__":
     run()
