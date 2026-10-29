@@ -30,6 +30,7 @@ from train import train_on_pool, promote_or_reject, save_model, register_as_prod
 from preprocessing import process_file
 from train import train_on_pool, promote_or_reject, save_model
 from detect_drift import check_drift
+from prefect import flow, task
 
 SIM_DIR = "data/simulated"
 MODEL_PATH = "models/champion_model.pkl"
@@ -62,31 +63,91 @@ def align_columns(x: pd.DataFrame, reference_columns) -> pd.DataFrame:
     return x.reindex(columns=reference_columns, fill_value=0)
 
 
-def run():
-    mlflow.set_experiment("smlops_credit_risk")
-
-    print("=== Round 0: training initial champion ===")
+@task(name="train-initial-champion", log_prints=True)
+def train_initial_champion():
     x_init, y_init = process_file(f"{SIM_DIR}/initial_train.csv", encode_for=ENCODING)
     champion, champion_run_id = train_on_pool(x_init, y_init, run_name="round_0_champion")
-    champion_columns = x_init.columns
+    return champion, champion_run_id, x_init.columns
 
+
+@task(name="load-eval-set")
+def load_eval_set():
     x_eval_raw, y_eval = process_file(f"{SIM_DIR}/eval_fixed.csv", encode_for=ENCODING)
-    x_eval_for_champion = align_columns(x_eval_raw, champion_columns)
+    return x_eval_raw, y_eval
 
+
+@task(name="evaluate-initial-champion", log_prints=True)
+def evaluate_initial_champion(champion, champion_columns, x_eval_raw, y_eval):
+    x_eval_for_champion = align_columns(x_eval_raw, champion_columns)
     champion_probs = champion.predict_proba(x_eval_for_champion)[:, 1]
     champion_auc = roc_auc_score(y_eval, champion_probs)
     print(f"Initial champion AUC on fixed evaluation set: {champion_auc:.4f}")
 
     with mlflow.start_run(run_name="round_0_summary"):
         mlflow.log_metric("champion_auc", champion_auc)
+    return champion_auc
 
-    save_model(champion, MODEL_PATH)
-    register_as_production(champion_run_id)
 
-    # Reference distribution every batch is checked against -- the
-    # initial pool, kept fixed throughout, same as detect_drift.py's
-    # own standalone usage.
+@task(name="register-champion", log_prints=True)
+def register_champion(model, run_id):
+    save_model(model, MODEL_PATH)
+    register_as_production(run_id)
+
+
+@task(name="check-drift", log_prints=True)
+def check_drift_task(batch_path):
+    # Reference distribution every batch is checked against: the
+    # initial pool, kept fixed throughout.
     reference_df = pd.read_csv(f"{SIM_DIR}/initial_train.csv")
+    batch_df = pd.read_csv(batch_path)
+    return check_drift(reference_df, batch_df)
+
+
+@task(name="train-challenger", log_prints=True)
+def train_challenger(accumulated_paths, round_number):
+    combined_path = f"{SIM_DIR}/_combined_round_{round_number}.csv"
+    combine_raw_files(accumulated_paths, combined_path)
+
+    x_round, y_round = process_file(combined_path, encode_for=ENCODING)
+    challenger, challenger_run_id = train_on_pool(
+        x_round, y_round, run_name=f"round_{round_number}_challenger"
+    )
+    return challenger, challenger_run_id, x_round.columns
+
+
+@task(name="evaluate-and-decide", log_prints=True)
+def evaluate_and_decide(
+    champion, champion_columns,
+    challenger, challenger_columns,
+    x_eval_raw, y_eval, round_number,
+):
+    x_eval_for_champion = align_columns(x_eval_raw, champion_columns)
+    x_eval_for_challenger = align_columns(x_eval_raw, challenger_columns)
+
+    champion_probs = champion.predict_proba(x_eval_for_champion)[:, 1]
+    challenger_probs = challenger.predict_proba(x_eval_for_challenger)[:, 1]
+
+    promoted = promote_or_reject(
+        champion_probs, challenger_probs, y_eval, threshold=PROMOTION_THRESHOLD
+    )
+
+    with mlflow.start_run(run_name=f"round_{round_number}_summary"):
+        mlflow.log_metric("champion_auc", roc_auc_score(y_eval, champion_probs))
+        mlflow.log_metric("challenger_auc", roc_auc_score(y_eval, challenger_probs))
+        mlflow.log_metric("promoted", int(promoted))
+
+    return promoted
+
+
+@flow(name="smlops-retrain", log_prints=True)
+def retrain_flow():
+    mlflow.set_experiment("smlops_credit_risk")
+
+    print("=== Round 0: training initial champion ===")
+    champion, champion_run_id, champion_columns = train_initial_champion()
+    x_eval_raw, y_eval = load_eval_set()
+    evaluate_initial_champion(champion, champion_columns, x_eval_raw, y_eval)
+    register_champion(champion, champion_run_id)
 
     accumulated_paths = [f"{SIM_DIR}/initial_train.csv"]
 
@@ -94,13 +155,11 @@ def run():
         print(f"\n=== Round {i}: batch_{i} arrives ===")
         batch_path = f"{SIM_DIR}/batch_{i}.csv"
 
-        # The batch is still considered "arrived" and gets folded into
-        # future training pools regardless of this round's decision --
-        # only THIS round's retraining is skipped if nothing has drifted.
+        # The batch still gets folded into future training pools regardless
+        # of this round's decision; only THIS round's retraining is skipped.
         accumulated_paths.append(batch_path)
 
-        batch_df = pd.read_csv(batch_path)
-        drift_result = check_drift(reference_df, batch_df)
+        drift_result = check_drift_task(batch_path)
 
         if not drift_result["drift_detected"]:
             print(f"No significant drift in batch_{i} -- skipping retraining this round.")
@@ -108,37 +167,23 @@ def run():
 
         print(f"Drift detected in batch_{i} -- proceeding with retraining.")
 
-        combined_path = f"{SIM_DIR}/_combined_round_{i}.csv"
-        combine_raw_files(accumulated_paths, combined_path)
-
-        x_round, y_round = process_file(combined_path, encode_for=ENCODING)
-        challenger, challenger_run_id = train_on_pool(
-            x_round, y_round, run_name=f"round_{i}_challenger"
-        )
-        challenger_columns = x_round.columns
-
-        x_eval_for_champion = align_columns(x_eval_raw, champion_columns)
-        x_eval_for_challenger = align_columns(x_eval_raw, challenger_columns)
-
-        champion_probs = champion.predict_proba(x_eval_for_champion)[:, 1]
-        challenger_probs = challenger.predict_proba(x_eval_for_challenger)[:, 1]
-
-        promoted = promote_or_reject(
-            champion_probs, challenger_probs, y_eval, threshold=PROMOTION_THRESHOLD
+        challenger, challenger_run_id, challenger_columns = train_challenger(
+            list(accumulated_paths), i
         )
 
-        with mlflow.start_run(run_name=f"round_{i}_summary"):
-            mlflow.log_metric("champion_auc", roc_auc_score(y_eval, champion_probs))
-            mlflow.log_metric("challenger_auc", roc_auc_score(y_eval, challenger_probs))
-            mlflow.log_metric("promoted", int(promoted))
+        promoted = evaluate_and_decide(
+            champion, champion_columns,
+            challenger, challenger_columns,
+            x_eval_raw, y_eval, i,
+        )
 
         if promoted:
             champion = challenger
             champion_columns = challenger_columns
-            save_model(champion, MODEL_PATH)
-            register_as_production(challenger_run_id)
+            register_champion(champion, challenger_run_id)
 
     print("\n=== Retraining simulation complete ===")
 
+
 if __name__ == "__main__":
-    run()
+    retrain_flow.serve(name="weekly-retrain", cron="0 2 * * 0")

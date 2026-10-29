@@ -12,8 +12,7 @@ dvc
 evidently
 streamlit
 matplotlib
-
-# prefect        # pipeline orchestration
+prefect
 # fastapi        # model serving API
 # uvicorn        # server to run the FastAPI app
 # streamlit      # dashboard
