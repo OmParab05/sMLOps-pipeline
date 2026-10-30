@@ -25,10 +25,10 @@ Produces:
 
 import pandas as pd
 import mlflow
+import json
 from sklearn.metrics import roc_auc_score
 from train import train_on_pool, promote_or_reject, save_model, register_as_production
 from preprocessing import process_file
-from train import train_on_pool, promote_or_reject, save_model
 from detect_drift import check_drift
 from prefect import flow, task
 
@@ -36,6 +36,7 @@ SIM_DIR = "data/simulated"
 MODEL_PATH = "models/champion_model.pkl"
 PROMOTION_THRESHOLD = 0.005
 N_BATCHES = 3
+COLUMNS_PATH = "models/champion_columns.json"
 
 # One-hot encoding ("xgboost" mode in process_file) is used here instead
 # of LightGBM's native categorical dtype, specifically because different
@@ -89,18 +90,34 @@ def evaluate_initial_champion(champion, champion_columns, x_eval_raw, y_eval):
 
 
 @task(name="register-champion", log_prints=True)
-def register_champion(model, run_id):
+def register_champion(model, run_id, columns):
     save_model(model, MODEL_PATH)
+    with open(COLUMNS_PATH, "w") as f:
+        json.dump(list(columns), f)
     register_as_production(run_id)
 
 
 @task(name="check-drift", log_prints=True)
-def check_drift_task(batch_path):
+def check_drift_task(batch_path, round_number):
     # Reference distribution every batch is checked against: the
     # initial pool, kept fixed throughout.
     reference_df = pd.read_csv(f"{SIM_DIR}/initial_train.csv")
     batch_df = pd.read_csv(batch_path)
-    return check_drift(reference_df, batch_df)
+    result = check_drift(reference_df, batch_df)
+
+    scores = result["scores"]
+    decision = "retrain" if result["drift_detected"] else "skipped_no_drift"
+
+    # One small run per batch, whether or not retraining happens, so
+    # skipped rounds leave a trace for the dashboard.
+    with mlflow.start_run(run_name=f"round_{round_number}_drift"):
+        mlflow.set_tags({"round": str(round_number), "decision": decision})
+        mlflow.log_metric("drift_detected", int(result["drift_detected"]))
+        mlflow.log_metric("max_psi", max(scores.values(), default=0.0))
+        for feature, value in scores.items():
+            mlflow.log_metric(f"psi_{feature}", value)
+
+    return result
 
 
 @task(name="train-challenger", log_prints=True)
@@ -147,7 +164,7 @@ def retrain_flow():
     champion, champion_run_id, champion_columns = train_initial_champion()
     x_eval_raw, y_eval = load_eval_set()
     evaluate_initial_champion(champion, champion_columns, x_eval_raw, y_eval)
-    register_champion(champion, champion_run_id)
+    register_champion(champion, champion_run_id, champion_columns)
 
     accumulated_paths = [f"{SIM_DIR}/initial_train.csv"]
 
@@ -159,7 +176,7 @@ def retrain_flow():
         # of this round's decision; only THIS round's retraining is skipped.
         accumulated_paths.append(batch_path)
 
-        drift_result = check_drift_task(batch_path)
+        drift_result = check_drift_task(batch_path, i)
 
         if not drift_result["drift_detected"]:
             print(f"No significant drift in batch_{i} -- skipping retraining this round.")
@@ -180,10 +197,10 @@ def retrain_flow():
         if promoted:
             champion = challenger
             champion_columns = challenger_columns
-            register_champion(champion, challenger_run_id)
+            register_champion(champion, challenger_run_id, champion_columns)
 
     print("\n=== Retraining simulation complete ===")
 
 
 if __name__ == "__main__":
-    retrain_flow.serve(name="weekly-retrain", cron="0 2 * * 0")
+    retrain_flow()

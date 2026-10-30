@@ -1,0 +1,74 @@
+09:20:35.200 | INFO    | prefect - Starting temporary server on http://127.0.0.1:8995
+See https://docs.prefect.io/v3/concepts/server#how-to-guides for more information on running a dedicated Prefect server.
+09:20:42.109 | INFO    | Flow run 'finicky-macaw' - Beginning flow run 'finicky-macaw' for flow 'smlops-retrain'
+09:20:43.118 | INFO    | Flow run 'finicky-macaw' - === Round 0: training initial champion ===
+09:20:43.307 | INFO    | Task run 'train-initial-champion-2fd' - Loaded 123004 rows, 122 columns
+09:20:43.384 | INFO    | Task run 'train-initial-champion-2fd' - Data validation passed.
+09:20:43.386 | INFO    | Task run 'train-initial-champion-2fd' - Target balance:
+ TARGET
+0    0.919271
+1    0.080729
+Name: proportion, dtype: float64
+09:20:43.524 | INFO    | Task run 'train-initial-champion-2fd' - 16 categorical columns found
+09:20:43.753 | INFO    | Task run 'train-initial-champion-2fd' - Using Optuna-tuned hyperparameters from models/best_params.json
+09:20:44.546 | INFO    | Task run 'train-initial-champion-2fd' - [LightGBM] [Info] Number of positive: 9930, number of negative: 113074
+09:20:44.621 | INFO    | Task run 'train-initial-champion-2fd' - [LightGBM] [Info] Auto-choosing col-wise multi-threading, the overhead of testing was 0.056419 seconds.
+You can set `force_col_wise=true` to remove the overhead.
+09:20:44.624 | INFO    | Task run 'train-initial-champion-2fd' - [LightGBM] [Info] Total Bins 13168
+09:20:44.627 | INFO    | Task run 'train-initial-champion-2fd' - [LightGBM] [Info] Number of data points in the train set: 123004, number of used features: 213
+09:20:44.629 | INFO    | Task run 'train-initial-champion-2fd' - [LightGBM] [Info] [binary:BoostFromScore]: pavg=0.080729 -> initscore=-2.432482
+09:20:44.631 | INFO    | Task run 'train-initial-champion-2fd' - [LightGBM] [Info] Start training from score -2.432482
+09:21:10.495 | INFO    | Task run 'train-initial-champion-2fd' - Finished in state Completed()
+09:21:10.604 | INFO    | Task run 'load-eval-set-ab9' - Loaded 61503 rows, 122 columns
+09:21:10.644 | INFO    | Task run 'load-eval-set-ab9' - Data validation passed.
+09:21:10.646 | INFO    | Task run 'load-eval-set-ab9' - Target balance:
+ TARGET
+0    0.919272
+1    0.080728
+Name: proportion, dtype: float64
+09:21:10.778 | INFO    | Task run 'load-eval-set-ab9' - 16 categorical columns found
+09:21:10.900 | INFO    | Task run 'load-eval-set-ab9' - Finished in state Completed()
+09:21:12.209 | INFO    | Task run 'evaluate-initial-champion-75d' - Initial champion AUC on fixed evaluation set: 0.7653
+09:21:12.286 | INFO    | Task run 'evaluate-initial-champion-75d' - Finished in state Completed()
+09:21:12.423 | INFO    | Task run 'register-champion-838' - Model saved to models/champion_model.pkl
+Registered model 'smlops_credit_risk_champion' already exists. Creating a new version of this model...
+2026/10/30 09:21:12 WARNING mlflow.tracking._model_registry.fluent: Run with id 1ca182376b0548c7bbb48b45b791bf4b has no artifacts at artifact path 'model', registering model based on models:/m-4a4080e5b94d448d8a586a11916d1c4b instead
+Created version '10' of model 'smlops_credit_risk_champion'.
+09:21:12.722 | INFO    | Task run 'register-champion-838' - Registered smlops_credit_risk_champion version 10 and promoted to Production
+09:21:12.726 | INFO    | Task run 'register-champion-838' - Finished in state Completed()
+09:21:12.730 | INFO    | Flow run 'finicky-macaw' - 
+=== Round 1: batch_1 arrives ===
+09:21:13.257 | INFO    | Task run 'check-drift-639' - Finished in state Completed()
+09:21:13.258 | INFO    | Flow run 'finicky-macaw' - No significant drift in batch_1 -- skipping retraining this round.
+09:21:13.260 | INFO    | Flow run 'finicky-macaw' - 
+=== Round 2: batch_2 arrives ===
+09:21:13.639 | INFO    | Task run 'check-drift-e27' - Finished in state Completed()
+09:21:13.639 | INFO    | Flow run 'finicky-macaw' - Drift detected in batch_2 -- proceeding with retraining.
+09:21:24.861 | INFO    | Task run 'train-challenger-4de' - Loaded 205007 rows, 122 columns
+09:21:25.058 | INFO    | Task run 'train-challenger-4de' - Data validation passed.
+09:21:25.062 | INFO    | Task run 'train-challenger-4de' - Target balance:
+ TARGET
+0    0.919091
+1    0.080909
+Name: proportion, dtype: float64
+09:21:25.886 | INFO    | Task run 'train-challenger-4de' - 16 categorical columns found
+09:21:26.262 | INFO    | Task run 'train-challenger-4de' - Using Optuna-tuned hyperparameters from models/best_params.json
+09:21:27.654 | INFO    | Task run 'train-challenger-4de' - [LightGBM] [Info] Number of positive: 16587, number of negative: 188420
+09:21:27.792 | INFO    | Task run 'train-challenger-4de' - [LightGBM] [Info] Auto-choosing col-wise multi-threading, the overhead of testing was 0.097658 seconds.
+You can set `force_col_wise=true` to remove the overhead.
+09:21:27.796 | INFO    | Task run 'train-challenger-4de' - [LightGBM] [Info] Total Bins 13218
+09:21:27.798 | INFO    | Task run 'train-challenger-4de' - [LightGBM] [Info] Number of data points in the train set: 205007, number of used features: 217
+09:21:27.801 | INFO    | Task run 'train-challenger-4de' - [LightGBM] [Info] [binary:BoostFromScore]: pavg=0.080909 -> initscore=-2.430054
+09:21:27.803 | INFO    | Task run 'train-challenger-4de' - [LightGBM] [Info] Start training from score -2.430054
+09:21:57.288 | INFO    | Task run 'train-challenger-4de' - Finished in state Completed()
+09:21:58.426 | INFO    | Task run 'evaluate-and-decide-a3b' - Champion AUC: 0.7653 | Challenger AUC: 0.7694
+09:21:58.427 | INFO    | Task run 'evaluate-and-decide-a3b' - Challenger did not beat champion by threshold: REJECTED
+09:21:58.544 | INFO    | Task run 'evaluate-and-decide-a3b' - Finished in state Completed()
+09:21:58.545 | INFO    | Flow run 'finicky-macaw' - 
+=== Round 3: batch_3 arrives ===
+09:21:58.998 | INFO    | Task run 'check-drift-2ba' - Finished in state Completed()
+09:21:58.999 | INFO    | Flow run 'finicky-macaw' - No significant drift in batch_3 -- skipping retraining this round.
+09:21:59.000 | INFO    | Flow run 'finicky-macaw' - 
+=== Retraining simulation complete ===
+09:21:59.199 | INFO    | Flow run 'finicky-macaw' - Finished in state Completed()
+09:21:59.227 | INFO    | prefect - Stopping temporary server on http://127.0.0.1:8995

@@ -13,6 +13,6 @@ evidently
 streamlit
 matplotlib
 prefect
-# fastapi        # model serving API
-# uvicorn        # server to run the FastAPI app
+fastapi
+uvicorn[standard]
 # streamlit      # dashboard
