@@ -10,10 +10,9 @@ shap
 optuna
 dvc
 evidently
-streamlit
 matplotlib
 prefect
 fastapi
 uvicorn[standard]
 sqlalchemy[asyncio]<2.1
-# streamlit      # dashboard
+streamlit
