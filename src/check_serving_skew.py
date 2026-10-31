@@ -73,7 +73,7 @@ def main():
     # API rounds to 4 decimals, so allow that much slack.
     print("\nSKEW CHECK:", "PASS" if worst < 1e-4 else "FAIL", f"(max diff {worst:.6f})")
 
-    print("\nProbability distribution on the evaluation set:")
+    print("\nRisk score distribution on the evaluation set:")
     for q in (5, 25, 50, 75, 95):
         print(f"  {q:>2}th percentile: {np.percentile(offline, q):.3f}")
     decisions = pd.Series([decide(p) for p in offline]).value_counts(normalize=True)

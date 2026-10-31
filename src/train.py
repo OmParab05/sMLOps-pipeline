@@ -177,7 +177,7 @@ def save_model(model, path: str = f"{MODEL_DIR}/lgbm_model.pkl"):
     joblib.dump(model, path)
     print(f"Model saved to {path}")
 
-def promote_or_reject(champion_probs, challenger_probs, y_eval, threshold: float = 0.02):
+def promote_or_reject(champion_probs, challenger_probs, y_eval, threshold: float = 0.005):
     champion_auc = roc_auc_score(y_eval, champion_probs)
     challenger_auc = roc_auc_score(y_eval, challenger_probs)
     print(f"Champion AUC: {champion_auc:.4f} | Challenger AUC: {challenger_auc:.4f}")
