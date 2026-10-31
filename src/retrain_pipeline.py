@@ -203,4 +203,8 @@ def retrain_flow():
 
 
 if __name__ == "__main__":
-    retrain_flow()
+    import sys
+    if "--serve" in sys.argv:
+        retrain_flow.serve(name="weekly-retrain", cron="0 2 * * 0")
+    else:
+        retrain_flow()

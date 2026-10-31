@@ -15,4 +15,5 @@ matplotlib
 prefect
 fastapi
 uvicorn[standard]
+sqlalchemy[asyncio]<2.1
 # streamlit      # dashboard

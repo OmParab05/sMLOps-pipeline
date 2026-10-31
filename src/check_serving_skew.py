@@ -79,6 +79,16 @@ def main():
     decisions = pd.Series([decide(p) for p in offline]).value_counts(normalize=True)
     print(f"\nShare of applicants per decision band {DECISION_BANDS}:")
     print((decisions * 100).round(1).to_string())
+    y_eval = raw["TARGET"].to_numpy()
+    bands = pd.Series([decide(p) for p in offline])
+    summary = (
+        pd.DataFrame({"band": bands, "default": y_eval})
+        .groupby("band")["default"]
+        .agg(applicants="count", actual_default_rate="mean")
+    )
+    print("\nActual default rate per band (the real test of the thresholds):")
+    print(summary.round(3).to_string())
+    print(f"\nOverall default rate: {y_eval.mean():.3f}")
 
 
 if __name__ == "__main__":

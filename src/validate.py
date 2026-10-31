@@ -8,7 +8,7 @@ silently reach the model.
 """
 
 import pandera.pandas as pa
-from pandera import Column, Check, DataFrameSchema
+from pandera.pandas import Column, Check, DataFrameSchema
 
 # Only the columns that matter most for data quality are checked
 # explicitly; strict=False lets the other ~110 columns in the dataset
